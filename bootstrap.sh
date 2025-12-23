@@ -47,6 +47,30 @@ ensure_brew() {
   fi
 }
 
+# Collect user info
+if ! is_done "userinfo"; then
+  read -p "Enter your full name: " DEV_NAME
+  read -p "Enter your email address: " DEV_EMAIL
+  read -p "Enter your GitHub username: " GH_USER
+  read -p "Choose your shell [bash/zsh]: " SHELL_CHOICE
+  read -p "Choose your editor [vim/nano/code]: " EDITOR_CHOICE
+
+  git config --global user.name "$DEV_NAME"
+  git config --global user.email "$DEV_EMAIL"
+
+  case "$EDITOR_CHOICE" in
+    vim|nano) git config --global core.editor "$EDITOR_CHOICE";;
+    code) git config --global core.editor "code --wait";;
+  esac
+
+  case "$SHELL_CHOICE" in
+    zsh) chsh -s "$(command -v zsh)" || true;;
+    bash) chsh -s "$(command -v bash)" || true;;
+  esac
+
+  mark_done "userinfo"
+fi
+
 # Core tools
 if ! is_done "core"; then
   log "Installing core tools..."
@@ -77,8 +101,8 @@ fi
 if ! is_done "java"; then
   log "Installing Java stack..."
   if [[ "$OS" == "Darwin" ]]; then
-    brew install openjdk@17 maven gradle
     ensure_brew
+    brew install openjdk@17 maven gradle
   else
     sudo apt install -y openjdk-17-jdk maven gradle
   fi
@@ -117,6 +141,7 @@ fi
 if ! is_done "vscode"; then
   log "Installing VS Code..."
   if [[ "$OS" == "Darwin" ]]; then
+    ensure_brew
     brew install --cask visual-studio-code
   else
     wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/microsoft.gpg > /dev/null
@@ -155,7 +180,7 @@ fi
 # SSH keygen
 if ! is_done "ssh"; then
   log "Generating SSH key..."
-  ssh-keygen -t ed25519 -C "$USER@$(hostname)" -f "$HOME/.ssh/id_ed25519" -N ""
+  ssh-keygen -t ed25519 -C "$DEV_EMAIL" -f "$HOME/.ssh/id_ed25519" -N ""
   log "Public key:"
   cat "$HOME/.ssh/id_ed25519.pub"
   mark_done "ssh"
