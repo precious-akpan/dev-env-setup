@@ -36,3 +36,13 @@ The bootstrap scripts install:
 Interactive (recommended):
 ```bash
 curl -fsSL https://raw.githubusercontent.com/<your-org>/dev-env-setup/main/bootstrap.sh | bash
+
+Non-interactive with flags:
+
+bash bootstrap.sh --yes \
+  --name "Your Name" \
+  --email "you@example.com" \
+  --gh yourgithub \
+  --db postgresql \
+  --shell zsh \
+  --editor code
