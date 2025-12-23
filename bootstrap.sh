@@ -3,6 +3,13 @@ set -euo pipefail
 
 STATE_FILE="$HOME/.devsetup_state"
 LOG_FILE="$HOME/.devsetup.log"
+OS="$(uname -s)"
+
+touch "$STATE_FILE" "$LOG_FILE"
+
+log() { echo "$(date '+%F %T') $*" | tee -a "$LOG_FILE"; }
+mark_done() { echo "$1" >> "$STATE_FILE"; }
+is_done() { grep -qx "$1" "$STATE_FILE" 2>/dev/null; }
 
 # Banner
 cat <<'BANNER'
@@ -10,71 +17,87 @@ cat <<'BANNER'
 Fullstack Developer Environment Bootstrap (macOS/Linux)
 
 This script will install:
-- Git, curl, wget, build tools, Python3, tmux, zsh/bash
+- Core tools: Git, curl, wget, build-essential, Python3, tmux, zsh/bash
 - Node.js LTS + npm/yarn/pnpm
 - Java 17 (OpenJDK), Maven, Gradle, Spring Boot CLI
 - Docker + Docker Compose
 - PostgreSQL / MySQL / MongoDB (your choice)
 - VS Code + extensions
+- JetBrains IntelliJ IDEA (Community Edition)
 - Git config + SSH keygen
 ===============================================================
 BANNER
 
-# Confirm
 read -r -p "Proceed with installation? (y/N): " CONFIRM
 [[ "${CONFIRM,,}" == "y" ]] || exit 0
 
-touch "$STATE_FILE" "$LOG_FILE"
-
-# Helpers
-mark_done() { echo "$1" >> "$STATE_FILE"; }
-is_done() { grep -qx "$1" "$STATE_FILE" 2>/dev/null; }
-log() { echo "$(date '+%F %T') $*" | tee -a "$LOG_FILE"; }
-
-# Collect user info
-if ! is_done "userinfo"; then
-  read -p "Enter your full name: " DEV_NAME
-  read -p "Enter your email: " DEV_EMAIL
-  read -p "Enter your GitHub username: " GH_USER
-  git config --global user.name "$DEV_NAME"
-  git config --global user.email "$DEV_EMAIL"
-  mark_done "userinfo"
-fi
+# Ensure Homebrew (macOS only)
+ensure_brew() {
+  if [[ "$OS" == "Darwin" ]]; then
+    if ! command -v brew >/dev/null 2>&1; then
+      log "Homebrew not found. Installing..."
+      /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+      if [[ -d /opt/homebrew/bin ]]; then
+        eval "$(/opt/homebrew/bin/brew shellenv)"
+      elif [[ -d /usr/local/bin ]]; then
+        eval "$(/usr/local/bin/brew shellenv)"
+      fi
+      mark_done "brew-installed"
+    fi
+  fi
+}
 
 # Core tools
 if ! is_done "core"; then
   log "Installing core tools..."
-  sudo apt update && sudo apt install -y git curl wget build-essential python3 python3-pip tmux zsh unzip
+  if [[ "$OS" == "Darwin" ]]; then
+    ensure_brew
+    brew install git curl wget tmux zsh python
+  else
+    sudo apt update && sudo apt install -y git curl wget build-essential python3 python3-pip tmux zsh unzip
+  fi
   mark_done "core"
 fi
 
 # Node.js
 if ! is_done "node"; then
   log "Installing Node.js..."
-  curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
-  sudo apt install -y nodejs
-  sudo npm install -g yarn pnpm
-  node -v && npm -v
+  if [[ "$OS" == "Darwin" ]]; then
+    brew install node
+    npm install -g yarn pnpm
+  else
+    curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+    sudo apt install -y nodejs
+    sudo npm install -g yarn pnpm
+  fi
   mark_done "node"
 fi
 
 # Java + Spring Boot
 if ! is_done "java"; then
   log "Installing Java stack..."
-  sudo apt install -y openjdk-17-jdk maven gradle
+  if [[ "$OS" == "Darwin" ]]; then
+    brew install openjdk@17 maven gradle
+    ensure_brew
+  else
+    sudo apt install -y openjdk-17-jdk maven gradle
+  fi
   curl -s https://get.sdkman.io | bash
   source "$HOME/.sdkman/bin/sdkman-init.sh"
   sdk install springboot
-  java -version && mvn -v && gradle -v && spring --version
   mark_done "java"
 fi
 
 # Docker
 if ! is_done "docker"; then
   log "Installing Docker..."
-  sudo apt install -y docker.io docker-compose
-  sudo usermod -aG docker $USER
-  docker --version
+  if [[ "$OS" == "Darwin" ]]; then
+    brew install --cask docker
+    log "Open Docker Desktop once to finalize installation."
+  else
+    sudo apt install -y docker.io docker-compose
+    sudo usermod -aG docker $USER
+  fi
   mark_done "docker"
 fi
 
@@ -90,13 +113,16 @@ if ! is_done "db"; then
   mark_done "db"
 fi
 
-# VS Code + extensions
+# VS Code
 if ! is_done "vscode"; then
   log "Installing VS Code..."
-  sudo apt install -y software-properties-common apt-transport-https wget
-  wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/microsoft.gpg > /dev/null
-  echo "deb [arch=amd64] https://packages.microsoft.com/repos/vscode stable main" | sudo tee /etc/apt/sources.list.d/vscode.list
-  sudo apt update && sudo apt install -y code
+  if [[ "$OS" == "Darwin" ]]; then
+    brew install --cask visual-studio-code
+  else
+    wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/microsoft.gpg > /dev/null
+    echo "deb [arch=amd64] https://packages.microsoft.com/repos/vscode stable main" | sudo tee /etc/apt/sources.list.d/vscode.list
+    sudo apt update && sudo apt install -y code
+  fi
   code --install-extension ms-vscode.vscode-typescript-next
   code --install-extension dbaeumer.vscode-eslint
   code --install-extension esbenp.prettier-vscode
@@ -107,14 +133,32 @@ if ! is_done "vscode"; then
   mark_done "vscode"
 fi
 
+# IntelliJ IDEA
+if ! is_done "intellij"; then
+  log "Installing JetBrains IntelliJ IDEA..."
+  if [[ "$OS" == "Darwin" ]]; then
+    ensure_brew
+    brew install --cask intellij-idea-ce
+  else
+    if command -v snap >/dev/null 2>&1; then
+      sudo snap install intellij-idea-community --classic
+    else
+      log "Snap not found, installing JetBrains Toolbox..."
+      curl -fsSL https://download.jetbrains.com/toolbox/jetbrains-toolbox-1.28.1.15219.tar.gz -o /tmp/toolbox.tar.gz
+      tar -xzf /tmp/toolbox.tar.gz -C /tmp
+      /tmp/jetbrains-toolbox*/jetbrains-toolbox &
+    fi
+  fi
+  mark_done "intellij"
+fi
+
 # SSH keygen
 if ! is_done "ssh"; then
   log "Generating SSH key..."
-  ssh-keygen -t ed25519 -C "$DEV_EMAIL" -f "$HOME/.ssh/id_ed25519" -N ""
+  ssh-keygen -t ed25519 -C "$USER@$(hostname)" -f "$HOME/.ssh/id_ed25519" -N ""
   log "Public key:"
   cat "$HOME/.ssh/id_ed25519.pub"
   mark_done "ssh"
 fi
 
-# Summary
 log "✅ Setup complete! See $LOG_FILE for details."
