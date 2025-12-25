@@ -1,0 +1,33 @@
+name: Lint Installers
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  bash-lint:
+    name: Lint Bash Installer
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install ShellCheck
+        run: sudo apt-get install -y shellcheck
+
+      - name: Run ShellCheck on bootstrap.sh
+        run: shellcheck bootstrap.sh
+
+  powershell-lint:
+    name: Lint PowerShell Installer
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Run PSScriptAnalyzer on bootstrap.ps1
+        run: |
+          Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser
+          Invoke-ScriptAnalyzer -Path .\bootstrap.ps1 -Recurse -Severity Warning
