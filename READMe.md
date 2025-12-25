@@ -93,20 +93,8 @@ node -v && npm -v
 docker --version
 code --version
 ```
-Interactive Prompts
-During the run, you’ll be asked to provide:
 
-Full name and email (for Git configuration)
-
-GitHub username (for SSH key comment and guidance)
-
-Preferred shell (bash/zsh)
-
-Preferred editor (vim/nano/code)
-
-Database choice (PostgreSQL/MySQL/MongoDB/skip)
-
-In non-interactive mode, provide these via flags/parameters.
+---
 
 ### 🛠️ Troubleshooting
 
