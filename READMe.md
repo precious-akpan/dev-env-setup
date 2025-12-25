@@ -48,7 +48,7 @@ bash bootstrap.sh --yes \
   --shell zsh \
   --editor code
 ```
-
+---
 ### Windows
 ```powershell
 Set-ExecutionPolicy Bypass -Scope Process -Force
@@ -59,7 +59,7 @@ Non-interactive with parameters
 ```powershell
 .\bootstrap.ps1 -Yes -Name "Your Name" -Email "you@example.com" -GitHub "yourgithub" -Db postgresql -Editor code
 ```
-
+---
 ### Interactive Prompts
 During the run, you’ll be asked to provide:
 
@@ -71,6 +71,7 @@ During the run, you’ll be asked to provide:
 
 In non‑interactive mode, provide these via flags/parameters.
 
+---
 ### 🔄 Checkpointing & Resumability
 The installer records completed steps in a state file:
 
