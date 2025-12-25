@@ -1,6 +1,6 @@
 # Dev Environment Setup
 
-[![Lint Installers](https://github.com/<your-org>/dev-env-setup/actions/workflows/lint.yml/badge.svg)](https://github.com/<your-org>/dev-env-setup/actions/workflows/lint.yml)
+[![Lint Installers](https://github.com/precious-akpan/dev-env-setup/actions/workflows/lint.yml/badge.svg)](https://github.com/precious-akpan/dev-env-setup/actions/workflows/lint.yml)
 
 
 Welcome! This repository provides a production-grade onboarding process to set up a consistent fullstack developer environment across macOS, Linux, and Windows. The installers are curl/PowerShell-based, interactive, resumable, and idempotent.
