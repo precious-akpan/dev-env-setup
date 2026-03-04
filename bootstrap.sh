@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Configuration - CHANGE THESE TO PIN VERSIONS FOR YOUR ORG
+NODE_VERSION="20"        # Node.js major version
+JAVA_VERSION="17"        # OpenJDK version
+MIN_DISK_GB=10           # Minimum disk space requirement
+
 STATE_FILE="$HOME/.devsetup_state"
 LOG_FILE="$HOME/.devsetup.log"
 OS="$(uname -s)"
+PKG_MANAGER="unknown"
 
 touch "$STATE_FILE" "$LOG_FILE"
 
@@ -11,10 +17,46 @@ log() { echo "$(date '+%F %T') $*" | tee -a "$LOG_FILE"; }
 mark_done() { echo "$1" >> "$STATE_FILE"; }
 is_done() { grep -qx "$1" "$STATE_FILE" 2>/dev/null; }
 
+detect_pkg_manager() {
+  if [[ "$OS" == "Darwin" ]]; then
+    PKG_MANAGER="brew"
+  elif command -v apt-get >/dev/null 2>&1; then
+    PKG_MANAGER="apt"
+  elif command -v dnf >/dev/null 2>&1; then
+    PKG_MANAGER="dnf"
+  elif command -v pacman >/dev/null 2>&1; then
+    PKG_MANAGER="pacman"
+  fi
+}
+
+pre_flight_checks() {
+  log "Running pre-flight checks..."
+  
+  # Connection check
+  if ! curl -Is https://google.com --connect-timeout 5 >/dev/null; then
+    log "❌ Error: No internet connection."
+    exit 1
+  fi
+
+  # Disk space check (rough approximation)
+  local available_kb
+  available_kb=$(df -P . | awk 'NR==2 {print $4}')
+  if [ "$available_kb" -lt $((MIN_DISK_GB * 1024 * 1024)) ]; then
+    log "❌ Error: Insufficient disk space. Need at least ${MIN_DISK_GB}GB."
+    exit 1
+  fi
+  
+  log "✅ Pre-flight checks passed."
+}
+
 # Banner
-cat <<'BANNER'
+cat <<BANNER
 ===============================================================
 Fullstack Developer Environment Bootstrap (macOS/Linux)
+Consistency Goal: Pinning Node v${NODE_VERSION}, Java ${JAVA_VERSION}
+BANNER
+cat <<'BANNER'
+===============================================================
 
 This script will install:
 - Core tools: Git, curl, wget, build-essential, Python3, tmux, zsh/bash
@@ -30,6 +72,9 @@ BANNER
 
 read -r -p "Proceed with installation? (y/N): " CONFIRM
 [[ "${CONFIRM,,}" == "y" ]] || exit 0
+
+detect_pkg_manager
+pre_flight_checks
 
 # Ensure Homebrew (macOS only)
 ensure_brew() {
@@ -75,55 +120,102 @@ fi
 # Core tools
 if ! is_done "core"; then
   log "Installing core tools..."
-  if [[ "$OS" == "Darwin" ]]; then
-    ensure_brew
-    brew install git curl wget tmux zsh python
-  else
-    sudo apt update && sudo apt install -y git curl wget build-essential python3 python3-pip tmux zsh unzip
-  fi
+  case "$PKG_MANAGER" in
+    brew)
+      brew install git curl wget tmux zsh python
+      ;;
+    apt)
+      sudo apt update && sudo apt install -y git curl wget build-essential python3 python3-pip tmux zsh unzip
+      ;;
+    dnf)
+      sudo dnf install -y git curl wget make gcc gcc-c++ python3-pip tmux zsh unzip
+      ;;
+    pacman)
+      sudo pacman -Syu --noconfirm git curl wget base-devel python-pip tmux zsh unzip
+      ;;
+    *)
+      log "⚠️ Warning: Unknown package manager. Skipping core tools installation."
+      ;;
+  esac
   mark_done "core"
 fi
 
 # Node.js
 if ! is_done "node"; then
-  log "Installing Node.js..."
-  if [[ "$OS" == "Darwin" ]]; then
-    brew install node
-    npm install -g yarn pnpm
-  else
-    curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
-    sudo apt install -y nodejs
-    sudo npm install -g yarn pnpm
-  fi
+  log "Installing Node.js (Version: v${NODE_VERSION})..."
+  case "$PKG_MANAGER" in
+    brew)
+      brew install "node@${NODE_VERSION}" || brew install node
+      npm install -g yarn pnpm
+      ;;
+    apt)
+      curl -fsSL "https://deb.nodesource.com/setup_${NODE_VERSION}.x" | sudo -E bash -
+      sudo apt install -y nodejs
+      sudo npm install -g yarn pnpm
+      ;;
+    dnf)
+      curl -fsSL "https://rpm.nodesource.com/setup_${NODE_VERSION}.x" | sudo -E bash -
+      sudo dnf install -y nodejs
+      sudo npm install -g yarn pnpm
+      ;;
+    pacman)
+      sudo pacman -S --noconfirm nodejs npm
+      sudo npm install -g yarn pnpm
+      ;;
+  esac
   mark_done "node"
 fi
 
 # Java + Spring Boot
 if ! is_done "java"; then
-  log "Installing Java stack..."
-  if [[ "$OS" == "Darwin" ]]; then
-    ensure_brew
-    brew install openjdk@17 maven gradle
-  else
-    sudo apt install -y openjdk-17-jdk maven gradle
+  log "Installing Java stack (Version: ${JAVA_VERSION})..."
+  case "$PKG_MANAGER" in
+    brew)
+      brew install "openjdk@${JAVA_VERSION}" maven gradle
+      ;;
+    apt)
+      sudo apt install -y "openjdk-${JAVA_VERSION}-jdk" maven gradle
+      ;;
+    dnf)
+      sudo dnf install -y "java-${JAVA_VERSION}-openjdk-devel" maven gradle
+      ;;
+    pacman)
+      sudo pacman -S --noconfirm jdk${JAVA_VERSION}-openjdk maven gradle
+      ;;
+  esac
+  
+  if [[ ! -d "$HOME/.sdkman" ]]; then
+    curl -s https://get.sdkman.io | bash
   fi
-  curl -s https://get.sdkman.io | bash
-  # shellcheck source=$HOME/.sdkman/bin/sdkman-init.sh
-  source "$HOME/.sdkman/bin/sdkman-init.sh"
-  sdk install springboot
+  # shellcheck source=/dev/null
+  source "$HOME/.sdkman/bin/sdkman-init.sh" || true
+  sdk install springboot || true
   mark_done "java"
 fi
 
 # Docker
 if ! is_done "docker"; then
   log "Installing Docker..."
-  if [[ "$OS" == "Darwin" ]]; then
-    brew install --cask docker
-    log "Open Docker Desktop once to finalize installation."
-  else
-    sudo apt install -y docker.io docker-compose
-    sudo usermod -aG docker "$USER"
-  fi
+  case "$PKG_MANAGER" in
+    brew)
+      brew install --cask docker
+      log "Open Docker Desktop once to finalize installation."
+      ;;
+    apt)
+      sudo apt install -y docker.io docker-compose
+      sudo usermod -aG docker "$USER"
+      ;;
+    dnf)
+      sudo dnf install -y docker docker-compose
+      sudo systemctl enable --now docker
+      sudo usermod -aG docker "$USER"
+      ;;
+    pacman)
+      sudo pacman -S --noconfirm docker docker-compose
+      sudo systemctl enable --now docker
+      sudo usermod -aG docker "$USER"
+      ;;
+  esac
   mark_done "docker"
 fi
 
@@ -131,9 +223,30 @@ fi
 if ! is_done "db"; then
   read -r -p "Choose DB [postgresql/mysql/mongodb/skip]: " DB_CHOICE
   case "$DB_CHOICE" in
-    postgresql) sudo apt install -y postgresql postgresql-contrib;;
-    mysql) sudo apt install -y mysql-server;;
-    mongodb) sudo apt install -y mongodb;;
+    postgresql)
+      case "$PKG_MANAGER" in
+        apt) sudo apt install -y postgresql postgresql-contrib;;
+        dnf) sudo dnf install -y postgresql-server postgresql-contrib;;
+        pacman) sudo pacman -S --noconfirm postgresql;;
+        brew) brew install postgresql;;
+      esac
+      ;;
+    mysql)
+      case "$PKG_MANAGER" in
+        apt) sudo apt install -y mysql-server;;
+        dnf) sudo dnf install -y community-mysql-server;;
+        pacman) sudo pacman -S --noconfirm mariadb;;
+        brew) brew install mysql;;
+      esac
+      ;;
+    mongodb)
+      case "$PKG_MANAGER" in
+        apt) sudo apt install -y mongodb;;
+        dnf) sudo dnf install -y mongodb-org;;
+        pacman) sudo pacman -S --noconfirm mongodb-bin;;
+        brew) brew install mongodb-community;;
+      esac
+      ;;
     skip) ;;
   esac
   mark_done "db"
@@ -142,14 +255,24 @@ fi
 # VS Code
 if ! is_done "vscode"; then
   log "Installing VS Code..."
-  if [[ "$OS" == "Darwin" ]]; then
-    ensure_brew
-    brew install --cask visual-studio-code
-  else
-    wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/microsoft.gpg > /dev/null
-    echo "deb [arch=amd64] https://packages.microsoft.com/repos/vscode stable main" | sudo tee /etc/apt/sources.list.d/vscode.list
-    sudo apt update && sudo apt install -y code
-  fi
+  case "$PKG_MANAGER" in
+    brew)
+      brew install --cask visual-studio-code
+      ;;
+    apt)
+      wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/microsoft.gpg > /dev/null
+      echo "deb [arch=amd64] https://packages.microsoft.com/repos/vscode stable main" | sudo tee /etc/apt/sources.list.d/vscode.list
+      sudo apt update && sudo apt install -y code
+      ;;
+    dnf)
+      sudo rpm --import https://packages.microsoft.com/keys/microsoft.asc
+      sudo sh -c 'echo -e "[code]\nname=Visual Studio Code\nbaseurl=https://packages.microsoft.com/yumrepos/vscode\nenabled=1\ngpgcheck=1\ngpgkey=https://packages.microsoft.com/keys/microsoft.asc" > /etc/yum.repos.d/vscode.repo'
+      sudo dnf install -y code
+      ;;
+    pacman)
+      sudo pacman -S --noconfirm code
+      ;;
+  esac
   code --install-extension ms-vscode.vscode-typescript-next
   code --install-extension dbaeumer.vscode-eslint
   code --install-extension esbenp.prettier-vscode
@@ -189,4 +312,22 @@ if ! is_done "ssh"; then
   mark_done "ssh"
 fi
 
+# System Manifest
+generate_manifest() {
+  local manifest="$HOME/.devsetup_manifest"
+  log "Generating system manifest at $manifest..."
+  {
+    echo "--- Dev Environment Manifest ---"
+    echo "Date: $(date)"
+    echo "OS: $OS"
+    echo "Pkg Manager: $PKG_MANAGER"
+    echo "Node: $(node -v 2>/dev/null || echo 'not installed')"
+    echo "Java: $(java -version 2>&1 | head -n 1 || echo 'not installed')"
+    echo "Docker: $(docker --version 2>/dev/null || echo 'not installed')"
+    echo "Git: $(git --version || echo 'not installed')"
+    echo "--------------------------------"
+  } > "$manifest"
+}
+
+generate_manifest
 log "✅ Setup complete! See $LOG_FILE for details."
