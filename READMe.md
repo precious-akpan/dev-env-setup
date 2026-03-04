@@ -9,17 +9,26 @@ Welcome! This repository provides a production-grade onboarding process to set u
 
 ## Overview
 
-The bootstrap scripts install:
-
+- Java: Pinned version (default: 17)
+- Node.js: Pinned version (default: 20)
 - Core tools: Git, curl/wget, build-essential, Python3, tmux, zsh/bash
-- Frontend: Node.js (LTS), npm/yarn/pnpm
-- Backend: OpenJDK 17, Maven, Gradle, Spring Boot CLI
 - Containers: Docker (Docker Desktop on macOS/Windows)
 - Databases: PostgreSQL / MySQL / MongoDB (optional)
 - Editors: VS Code + extensions, JetBrains IntelliJ IDEA (Community Edition)
 - DevOps: Git config, SSH key generation, Docker group membership (Linux)
-- Resumability: Checkpointing via state file and idempotent steps
-- Logging: `~/.devsetup.log` (Linux/macOS), `%USERPROFILE%\.devsetup_win.log` (Windows)
+- **Flexibility**: Easily change versions or packages via script variables.
+- **Consistency**: Mandatory pre-flight checks and system manifest generation.
+- **Resumability**: Checkpointing via state file and idempotent steps.
+- **Logging**: `~/.devsetup.log` (Linux/macOS), `%USERPROFILE%\.devsetup_win.log` (Windows)
+
+---
+
+## Core Philosophy: Consistency with Flexibility
+
+This project is built on two primary principles:
+
+1. **Organizational Consistency**: Eliminate "it works on my machine" issues. By pinning versions of Node.js, Java, and other core tools at the top of the scripts, every developer in your organization builds with the identical stack.
+2. **Easy Customizability**: While we provide sensible defaults, the scripts are designed to be modified. Organizations can easily change version variables, or add/remove packages in the logic to suit their specific internal requirements.
 
 ---
 
@@ -144,3 +153,11 @@ docker compose up for local services
 ```
 
 For deeper onboarding (services architecture, secrets access, environment variables), refer to internal documentation (Confluence/Notion).
+
+---
+
+## 🤝 Contributing
+
+We welcome contributions! Please see our [CONTRIBUTING.md](CONTRIBUTING.md) for details on how to get started, report bugs, or suggest features.
+
+All participants are expected to uphold our [Code of Conduct](CODE_OF_CONDUCT.md).
