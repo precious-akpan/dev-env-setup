@@ -66,6 +66,14 @@ ensure_brew() {
 pre_flight_checks() {
   log "Running pre-flight checks..."
   
+  # Privilege check
+  if [[ "$EUID" -ne 0 ]]; then
+    if ! command -v sudo >/dev/null 2>&1 || ! sudo -v >/dev/null 2>&1; then
+      log "❌ Error: Root privileges or passwordless sudo access is required."
+      exit 1
+    fi
+  fi
+  
   # Auto-install curl for minimal installs
   if ! command -v curl >/dev/null 2>&1; then
     log "curl not found. Attempting auto-install..."
@@ -203,8 +211,14 @@ BANNER
         sudo npm install -g yarn pnpm
         ;;
       pacman)
-        sudo pacman -S --noconfirm nodejs npm
-        sudo npm install -g yarn pnpm
+        log "Installing nvm to manage Node.js on Arch..."
+        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+        export NVM_DIR="$HOME/.nvm"
+        # shellcheck source=/dev/null
+        [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+        nvm install "$NODE_VERSION"
+        nvm use "$NODE_VERSION"
+        npm install -g yarn pnpm
         ;;
     esac
     mark_done "node"
@@ -288,8 +302,29 @@ BANNER
       mongodb)
         case "$PKG_MANAGER" in
           apt) sudo apt install -y mongodb;;
-          dnf) sudo dnf install -y mongodb-org;;
-          pacman) sudo pacman -S --noconfirm mongodb-bin;;
+          dnf)
+            log "Configuring MongoDB repository for dnf..."
+            sudo bash -c 'cat > /etc/yum.repos.d/mongodb-org-7.0.repo <<EOF
+[mongodb-org-7.0]
+name=MongoDB Repository
+baseurl=https://repo.mongodb.org/yum/redhat/\$releasever/mongodb-org/7.0/x86_64/
+gpgcheck=1
+enabled=1
+gpgkey=https://pgp.mongodb.com/server-7.0.asc
+EOF'
+            sudo dnf install -y mongodb-org
+            ;;
+          pacman)
+            log "MongoDB (mongodb-bin) requires an AUR helper on Arch Linux."
+            if command -v yay >/dev/null 2>&1; then
+              yay -S --noconfirm mongodb-bin
+            elif command -v paru >/dev/null 2>&1; then
+              paru -S --noconfirm mongodb-bin
+            else
+              log "❌ Error: Neither 'yay' nor 'paru' AUR helpers found. Please install mongodb-bin manually."
+              exit 1
+            fi
+            ;;
           brew) ensure_brew; brew install mongodb-community;;
         esac
         ;;
@@ -353,9 +388,22 @@ BANNER
   # SSH keygen
   if ! is_done "ssh"; then
     log "Generating SSH key..."
-    ssh-keygen -t ed25519 -C "$DEV_EMAIL ($GH_USER)" -f "$HOME/.ssh/id_ed25519" -N ""
-    log "Public key:"
-    cat "$HOME/.ssh/id_ed25519.pub"
+    
+    # Ensure variables are populated if resuming
+    if [[ -z "${DEV_EMAIL:-}" ]]; then
+      DEV_EMAIL=$(git config user.email || echo "dev@local")
+    fi
+    if [[ -z "${GH_USER:-}" ]]; then
+      GH_USER=$(git config user.name || echo "user")
+    fi
+
+    if [[ -n "$DEV_EMAIL" ]] && [[ -n "$GH_USER" ]]; then
+      ssh-keygen -t ed25519 -C "$DEV_EMAIL ($GH_USER)" -f "$HOME/.ssh/id_ed25519" -N ""
+      log "Public key:"
+      cat "$HOME/.ssh/id_ed25519.pub"
+    else
+      log "⚠️ Warning: Could not determine email/username for SSH key. Skipping..."
+    fi
     mark_done "ssh"
   fi
 

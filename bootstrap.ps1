@@ -16,6 +16,9 @@ $MinDiskGB = 10
 $StateFile = "$HOME\.devsetup_state_win"
 $LogFile = "$HOME\.devsetup_win.log"
 
+if (-not (Test-Path $StateFile)) { New-Item -ItemType File -Path $StateFile -Force | Out-Null }
+if (-not (Test-Path $LogFile)) { New-Item -ItemType File -Path $LogFile -Force | Out-Null }
+
 function Write-Log {
   <#
   .SYNOPSIS
@@ -37,7 +40,7 @@ function Is-Done {
   .PARAMETER Step
     The identifier of the step to check.
   #>
-  param([string]$Step) Test-Path $StateFile -PathType Leaf -and (Select-String -Path $StateFile -Pattern "^\Q$Step\E$" -Quiet)
+  param([string]$Step) Test-Path $StateFile -PathType Leaf -and (Select-String -Path $StateFile -Pattern "^$([regex]::Escape($Step))$" -Quiet)
 }
 
 function Mark-Done {
@@ -112,9 +115,6 @@ if (-not $Yes) {
 
 Test-PreFlight
 
-if (-not (Test-Path $StateFile)) { New-Item -ItemType File -Path $StateFile -Force | Out-Null }
-if (-not (Test-Path $LogFile)) { New-Item -ItemType File -Path $LogFile -Force | Out-Null }
-
 # Collect user info
 if (-not (Is-Done "userinfo")) {
   if (-not $Name) { $Name = Read-Host "Enter your full name" }
@@ -139,12 +139,8 @@ if (-not (Is-Done "core")) {
 
 # Node.js
 if (-not (Is-Done "node")) {
-  Write-Log "Installing Node.js v$NodeVersion..."
-  # Winget doesn't always support pinning major versions easily, but we try the LTS nearest to our version
-  winget install --id OpenJS.NodeJS.LTS -e --version "$NodeVersion.*" --source winget --accept-source-agreements --accept-package-agreements 2>$null
-  if ($LASTEXITCODE -ne 0) {
-    winget install --id OpenJS.NodeJS.LTS -e --source winget --accept-source-agreements --accept-package-agreements
-  }
+  Write-Log "Installing Node.js LTS..."
+  winget install --id OpenJS.NodeJS.LTS -e --source winget --accept-source-agreements --accept-package-agreements
   npm install -g yarn pnpm | Out-Null
   Mark-Done "node"
 }
@@ -218,6 +214,12 @@ if (-not (Is-Done "ssh")) {
 function Get-SystemManifest {
     $manifest = "$HOME\.devsetup_manifest"
     Write-Log "Generating system manifest at $manifest..."
+    
+    $pkgMgr = "not installed"
+    if (Get-Command winget -ErrorAction SilentlyContinue) { $pkgMgr = "winget" }
+    elseif (Get-Command choco -ErrorAction SilentlyContinue) { $pkgMgr = "choco" }
+    elseif (Get-Command scoop -ErrorAction SilentlyContinue) { $pkgMgr = "scoop" }
+
     $nodeVer = try { node -v 2>$null } catch { "not installed" }
     $javaVer = try { java -version 2>&1 | Select-Object -First 1 } catch { "not installed" }
     $dockerVer = try { docker --version 2>$null } catch { "not installed" }
@@ -227,6 +229,7 @@ function Get-SystemManifest {
 --- Dev Environment Manifest ---
 Date: $((Get-Date).ToString())
 OS: Windows
+Pkg Manager: $($pkgMgr -or 'not installed')
 Node: $($nodeVer -or 'not installed')
 Java: $($javaVer -or 'not installed')
 Docker: $($dockerVer -or 'not installed')
