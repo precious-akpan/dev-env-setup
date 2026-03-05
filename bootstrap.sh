@@ -50,7 +50,15 @@ pre_flight_checks() {
   log "Running pre-flight checks..."
   
   # Connection check
-  if ! curl -Is https://google.com --connect-timeout 5 >/dev/null; then
+  if command -v curl >/dev/null 2>&1; then
+    CHECK_CMD="curl -Is https://google.com --connect-timeout 5"
+  elif command -v wget >/dev/null 2>&1; then
+    CHECK_CMD="wget -q --spider --timeout=5 https://google.com"
+  else
+    CHECK_CMD="ping -c 1 google.com"
+  fi
+
+  if ! $CHECK_CMD >/dev/null 2>&1; then
     log "❌ Error: No internet connection."
     exit 1
   fi
