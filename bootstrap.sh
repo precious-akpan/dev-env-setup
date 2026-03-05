@@ -122,6 +122,10 @@ BANNER
     fi
   }
 
+  if [[ "$OS" == "Darwin" ]]; then
+    ensure_brew
+  fi
+
   # Collect user info
   if ! is_done "userinfo"; then
     read -r -p "Enter your full name: " DEV_NAME
