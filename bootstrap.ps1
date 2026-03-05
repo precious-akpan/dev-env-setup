@@ -141,8 +141,10 @@ if (-not (Is-Done "core")) {
 if (-not (Is-Done "node")) {
   Write-Log "Installing Node.js v$NodeVersion..."
   # Winget doesn't always support pinning major versions easily, but we try the LTS nearest to our version
-  winget install --id OpenJS.NodeJS.LTS -e --version "$NodeVersion.*" --source winget --accept-source-agreements --accept-package-agreements 2>$null || `
-  winget install --id OpenJS.NodeJS.LTS -e --source winget --accept-source-agreements --accept-package-agreements
+  winget install --id OpenJS.NodeJS.LTS -e --version "$NodeVersion.*" --source winget --accept-source-agreements --accept-package-agreements 2>$null
+  if ($LASTEXITCODE -ne 0) {
+    winget install --id OpenJS.NodeJS.LTS -e --source winget --accept-source-agreements --accept-package-agreements
+  }
   npm install -g yarn pnpm | Out-Null
   Mark-Done "node"
 }
