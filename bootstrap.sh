@@ -123,7 +123,7 @@ if ! is_done "java"; then
     sudo apt install -y openjdk-17-jdk maven gradle
   fi
   curl -s https://get.sdkman.io | bash
-  # shellcheck source=$HOME/.sdkman/bin/sdkman-init.sh
+  # shellcheck source=/dev/null
   source "$HOME/.sdkman/bin/sdkman-init.sh"
   sdk install springboot
   mark_done "java"
