@@ -44,6 +44,23 @@ detect_pkg_manager() {
   fi
 }
 
+# ensure_brew: Checks for and installs Homebrew if the operating system is macOS (Darwin).
+# If installed, it also configures the shell environment to include brew in the PATH.
+ensure_brew() {
+  if [[ "$OS" == "Darwin" ]]; then
+    if ! command -v brew >/dev/null 2>&1; then
+      log "Homebrew not found. Installing..."
+      /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+      if [[ -d /opt/homebrew/bin ]]; then
+        eval "$(/opt/homebrew/bin/brew shellenv)"
+      elif [[ -d /usr/local/bin ]]; then
+        eval "$(/usr/local/bin/brew shellenv)"
+      fi
+      mark_done "brew-installed"
+    fi
+  fi
+}
+
 # pre_flight_checks: Validates system requirements before proceeding with installation.
 # Checks for internet connectivity and minimum disk space. Exits on failure.
 pre_flight_checks() {
@@ -115,27 +132,7 @@ BANNER
   detect_pkg_manager
   pre_flight_checks
 
-  # Ensure Homebrew (macOS only)
-  # ensure_brew: Checks for and installs Homebrew if the operating system is macOS (Darwin).
-  # If installed, it also configures the shell environment to include brew in the PATH.
-  ensure_brew() {
-    if [[ "$OS" == "Darwin" ]]; then
-      if ! command -v brew >/dev/null 2>&1; then
-        log "Homebrew not found. Installing..."
-        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-        if [[ -d /opt/homebrew/bin ]]; then
-          eval "$(/opt/homebrew/bin/brew shellenv)"
-        elif [[ -d /usr/local/bin ]]; then
-          eval "$(/usr/local/bin/brew shellenv)"
-        fi
-        mark_done "brew-installed"
-      fi
-    fi
-  }
 
-  if [[ "$OS" == "Darwin" ]]; then
-    ensure_brew
-  fi
 
   # Collect user info
   if ! is_done "userinfo"; then
@@ -167,6 +164,7 @@ BANNER
     log "Installing core tools..."
     case "$PKG_MANAGER" in
       brew)
+        ensure_brew
         brew install git curl wget tmux zsh python
         ;;
       apt)
@@ -190,6 +188,7 @@ BANNER
     log "Installing Node.js (Version: v${NODE_VERSION})..."
     case "$PKG_MANAGER" in
       brew)
+        ensure_brew
         brew install "node@${NODE_VERSION}" || brew install node
         npm install -g yarn pnpm
         ;;
@@ -216,6 +215,7 @@ BANNER
     log "Installing Java stack (Version: ${JAVA_VERSION})..."
     case "$PKG_MANAGER" in
       brew)
+        ensure_brew
         brew install "openjdk@${JAVA_VERSION}" maven gradle
         ;;
       apt)
@@ -243,6 +243,7 @@ BANNER
     log "Installing Docker..."
     case "$PKG_MANAGER" in
       brew)
+        ensure_brew
         brew install --cask docker
         log "Open Docker Desktop once to finalize installation."
         ;;
@@ -273,7 +274,7 @@ BANNER
           apt) sudo apt install -y postgresql postgresql-contrib;;
           dnf) sudo dnf install -y postgresql-server postgresql-contrib;;
           pacman) sudo pacman -S --noconfirm postgresql;;
-          brew) brew install postgresql;;
+          brew) ensure_brew; brew install postgresql;;
         esac
         ;;
       mysql)
@@ -281,7 +282,7 @@ BANNER
           apt) sudo apt install -y mysql-server;;
           dnf) sudo dnf install -y community-mysql-server;;
           pacman) sudo pacman -S --noconfirm mariadb;;
-          brew) brew install mysql;;
+          brew) ensure_brew; brew install mysql;;
         esac
         ;;
       mongodb)
@@ -289,7 +290,7 @@ BANNER
           apt) sudo apt install -y mongodb;;
           dnf) sudo dnf install -y mongodb-org;;
           pacman) sudo pacman -S --noconfirm mongodb-bin;;
-          brew) brew install mongodb-community;;
+          brew) ensure_brew; brew install mongodb-community;;
         esac
         ;;
       skip) ;;
@@ -302,6 +303,7 @@ BANNER
     log "Installing VS Code..."
     case "$PKG_MANAGER" in
       brew)
+        ensure_brew
         brew install --cask visual-studio-code
         ;;
       apt)
