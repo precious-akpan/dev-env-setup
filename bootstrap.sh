@@ -13,10 +13,25 @@ PKG_MANAGER="unknown"
 
 touch "$STATE_FILE" "$LOG_FILE"
 
+# log: Logs a message with a timestamp to both the console and the log file.
+# Arguments:
+#   $*: The message to log.
 log() { echo "$(date '+%F %T') $*" | tee -a "$LOG_FILE"; }
+
+# mark_done: Appends a completed step identifier to the state file.
+# Arguments:
+#   $1: The step identifier.
 mark_done() { echo "$1" >> "$STATE_FILE"; }
+
+# is_done: Checks if a step has already been recorded as completed.
+# Arguments:
+#   $1: The step identifier.
+# Returns:
+#   0 if the step is done, 1 otherwise.
 is_done() { grep -qx "$1" "$STATE_FILE" 2>/dev/null; }
 
+# detect_pkg_manager: Determines the system's package manager based on the OS and available commands.
+# Sets the global PKG_MANAGER variable.
 detect_pkg_manager() {
   if [[ "$OS" == "Darwin" ]]; then
     PKG_MANAGER="brew"
@@ -29,6 +44,8 @@ detect_pkg_manager() {
   fi
 }
 
+# pre_flight_checks: Validates system requirements before proceeding with installation.
+# Checks for internet connectivity and minimum disk space. Exits on failure.
 pre_flight_checks() {
   log "Running pre-flight checks..."
   
@@ -49,6 +66,9 @@ pre_flight_checks() {
   log "✅ Pre-flight checks passed."
 }
 
+# main: The main execution function that orchestrates the bootstrap process.
+# Arguments:
+#   $@: Any command-line arguments passed to the script.
 main() {
   cat <<BANNER
 ===============================================================
@@ -77,6 +97,8 @@ BANNER
   pre_flight_checks
 
   # Ensure Homebrew (macOS only)
+  # ensure_brew: Checks for and installs Homebrew if the operating system is macOS (Darwin).
+  # If installed, it also configures the shell environment to include brew in the PATH.
   ensure_brew() {
     if [[ "$OS" == "Darwin" ]]; then
       if ! command -v brew >/dev/null 2>&1; then
@@ -313,6 +335,7 @@ BANNER
   fi
 
   # System Manifest
+  # generate_manifest: Creates a system manifest file with details about the installed environment.
   generate_manifest() {
     local manifest="$HOME/.devsetup_manifest"
     log "Generating system manifest at $manifest..."

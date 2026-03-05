@@ -16,9 +16,41 @@ $MinDiskGB = 10
 $StateFile = "$HOME\.devsetup_state_win"
 $LogFile = "$HOME\.devsetup_win.log"
 
-function Write-Log { param([string]$Msg) "$((Get-Date).ToString('yyyy-MM-dd HH:mm:ss')) $Msg" | Tee-Object -FilePath $LogFile -Append }
-function Is-Done { param([string]$Step) Test-Path $StateFile -PathType Leaf -and (Select-String -Path $StateFile -Pattern "^\Q$Step\E$" -Quiet) }
-function Mark-Done { param([string]$Step) Add-Content -Path $StateFile -Value $Step }
+function Write-Log {
+  <#
+  .SYNOPSIS
+    Logs a message with a timestamp to both the console and the log file.
+  .DESCRIPTION
+    Takes a string message, adds a current timestamp, and appends it to the global log file while also displaying it in the console.
+  .PARAMETER Msg
+    The message string to be logged.
+  #>
+  param([string]$Msg) "$((Get-Date).ToString('yyyy-MM-dd HH:mm:ss')) $Msg" | Tee-Object -FilePath $LogFile -Append
+}
+
+function Is-Done {
+  <#
+  .SYNOPSIS
+    Checks if a step has already been recorded as completed in the state file.
+  .DESCRIPTION
+    Searches the state file for a specific step identifier. Returns true if found, false otherwise.
+  .PARAMETER Step
+    The identifier of the step to check.
+  #>
+  param([string]$Step) Test-Path $StateFile -PathType Leaf -and (Select-String -Path $StateFile -Pattern "^\Q$Step\E$" -Quiet)
+}
+
+function Mark-Done {
+  <#
+  .SYNOPSIS
+    Records a completed step identifier in the state file.
+  .DESCRIPTION
+    Appends the provided step identifier to the state file to mark it as completed.
+  .PARAMETER Step
+    The identifier of the step to mark as completed.
+  #>
+  param([string]$Step) Add-Content -Path $StateFile -Value $Step
+}
 
 function Test-PreFlight {
     Write-Log "Running pre-flight checks..."
