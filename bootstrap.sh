@@ -7,8 +7,21 @@ OS="$(uname -s)"
 
 touch "$STATE_FILE" "$LOG_FILE"
 
+# log: Logs a message with a timestamp to both the console and the log file.
+# Arguments:
+#   $*: The message to log.
 log() { echo "$(date '+%F %T') $*" | tee -a "$LOG_FILE"; }
+
+# mark_done: Appends a completed step identifier to the state file.
+# Arguments:
+#   $1: The step identifier.
 mark_done() { echo "$1" >> "$STATE_FILE"; }
+
+# is_done: Checks if a step has already been recorded as completed.
+# Arguments:
+#   $1: The step identifier.
+# Returns:
+#   0 if the step is done, 1 otherwise.
 is_done() { grep -qx "$1" "$STATE_FILE" 2>/dev/null; }
 
 # Banner
@@ -32,6 +45,8 @@ read -r -p "Proceed with installation? (y/N): " CONFIRM
 [[ "${CONFIRM,,}" == "y" ]] || exit 0
 
 # Ensure Homebrew (macOS only)
+# ensure_brew: Checks for and installs Homebrew if the operating system is macOS (Darwin).
+# If installed, it also configures the shell environment to include brew in the PATH.
 ensure_brew() {
   if [[ "$OS" == "Darwin" ]]; then
     if ! command -v brew >/dev/null 2>&1; then
