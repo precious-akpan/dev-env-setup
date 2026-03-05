@@ -49,6 +49,17 @@ detect_pkg_manager() {
 pre_flight_checks() {
   log "Running pre-flight checks..."
   
+  # Auto-install curl for minimal installs
+  if ! command -v curl >/dev/null 2>&1; then
+    log "curl not found. Attempting auto-install..."
+    case "$PKG_MANAGER" in
+      apt) sudo apt update && sudo apt install -y curl;;
+      dnf) sudo dnf install -y curl;;
+      pacman) sudo pacman -Syu --noconfirm curl;;
+      *) ;;
+    esac
+  fi
+
   # Connection check
   if command -v curl >/dev/null 2>&1; then
     CHECK_CMD="curl -Is https://google.com --connect-timeout 5"
