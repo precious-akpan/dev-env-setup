@@ -11,6 +11,21 @@ log() { echo "$(date '+%F %T') $*" | tee -a "$LOG_FILE"; }
 mark_done() { echo "$1" >> "$STATE_FILE"; }
 is_done() { grep -qx "$1" "$STATE_FILE" 2>/dev/null; }
 
+# ── Platform Validation ─────────────────────────────────────────
+if [[ "$OS" == "Linux" ]]; then
+  if [[ ! -f /etc/debian_version ]]; then
+    log "Error: Unsupported Linux distribution detected."
+    log "This script currently supports Debian/Ubuntu-based distributions only."
+    log "Detected OS: $(grep -s '^PRETTY_NAME=' /etc/os-release | cut -d= -f2 | tr -d '"')"
+    log "Contributions for other distributions are welcome!"
+    exit 1
+  fi
+elif [[ "$OS" != "Darwin" ]]; then
+  log "Error: Unsupported operating system: $OS"
+  log "This script supports macOS and Debian/Ubuntu Linux."
+  exit 1
+fi
+
 # ── Argument Parsing ────────────────────────────────────────────
 YES_MODE=false
 DEV_NAME=""
