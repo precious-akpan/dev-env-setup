@@ -226,10 +226,18 @@ fi
 
 # SSH keygen
 if ! is_done "ssh"; then
-  log "Generating SSH key..."
-  ssh-keygen -t ed25519 -C "$DEV_EMAIL ($GH_USER)" -f "$HOME/.ssh/id_ed25519" -N ""
+  KEY_PATH="$HOME/.ssh/id_ed25519"
+  if [[ -f "$KEY_PATH" ]]; then
+    log "SSH key already exists at $KEY_PATH — skipping generation."
+  else
+    log "Generating SSH key..."
+    mkdir -p "$HOME/.ssh"
+    chmod 700 "$HOME/.ssh"
+    ssh-keygen -t ed25519 -C "$DEV_EMAIL ($GH_USER)" -f "$KEY_PATH" -N ""
+  fi
   log "Public key:"
-  cat "$HOME/.ssh/id_ed25519.pub"
+  cat "${KEY_PATH}.pub"
+  log "Add this key to GitHub/GitLab (Settings → SSH keys)."
   mark_done "ssh"
 fi
 
