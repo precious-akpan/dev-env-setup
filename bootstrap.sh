@@ -35,15 +35,23 @@ SHELL_CHOICE=""
 EDITOR_CHOICE=""
 DB_CHOICE=""
 
+require_arg() {
+  if [[ $# -lt 2 ]] || [[ -z "${2:-}" ]] || [[ "${2:0:1}" == "-" ]]; then
+    log "Error: $1 requires a value."
+    log "Run 'bootstrap.sh --help' for usage information."
+    exit 1
+  fi
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --yes|-y)    YES_MODE=true; shift ;;
-    --name)      DEV_NAME="$2"; shift 2 ;;
-    --email)     DEV_EMAIL="$2"; shift 2 ;;
-    --gh)        GH_USER="$2"; shift 2 ;;
-    --db)        DB_CHOICE="$2"; shift 2 ;;
-    --shell)     SHELL_CHOICE="$2"; shift 2 ;;
-    --editor)    EDITOR_CHOICE="$2"; shift 2 ;;
+    --name)      require_arg "$@"; DEV_NAME="$2"; shift 2 ;;
+    --email)     require_arg "$@"; DEV_EMAIL="$2"; shift 2 ;;
+    --gh)        require_arg "$@"; GH_USER="$2"; shift 2 ;;
+    --db)        require_arg "$@"; DB_CHOICE="$2"; shift 2 ;;
+    --shell)     require_arg "$@"; SHELL_CHOICE="$2"; shift 2 ;;
+    --editor)    require_arg "$@"; EDITOR_CHOICE="$2"; shift 2 ;;
     --help|-h)
       cat <<'USAGE'
 Usage: bootstrap.sh [OPTIONS]
@@ -189,14 +197,21 @@ if ! is_done "docker"; then
     # Install prerequisites for Docker's official repository
     sudo apt update
     sudo apt install -y ca-certificates curl gnupg
+    # Detect distro for Docker repo URL (ubuntu or debian)
+    # shellcheck source=/dev/null
+    DOCKER_DISTRO="$(. /etc/os-release && echo "$ID")"
+    case "$DOCKER_DISTRO" in
+      ubuntu|debian) ;;
+      *) log "Warning: Unsupported distro '$DOCKER_DISTRO' for Docker official repo. Attempting with 'ubuntu'."; DOCKER_DISTRO="ubuntu" ;;
+    esac
     # Add Docker's official GPG key
     sudo install -m 0755 -d /etc/apt/keyrings
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    curl -fsSL "https://download.docker.com/linux/${DOCKER_DISTRO}/gpg" | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
     sudo chmod a+r /etc/apt/keyrings/docker.gpg
     # Add Docker's official APT repository
     # shellcheck source=/dev/null
     echo \
-      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${DOCKER_DISTRO} \
       $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
       sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
     sudo apt update
@@ -282,9 +297,19 @@ if ! is_done "ssh"; then
     chmod 700 "$HOME/.ssh"
     ssh-keygen -t ed25519 -C "$DEV_EMAIL ($GH_USER)" -f "$KEY_PATH" -N ""
   fi
-  log "Public key:"
-  cat "${KEY_PATH}.pub"
-  log "Add this key to GitHub/GitLab (Settings → SSH keys)."
+  # Display public key — regenerate from private key if .pub is missing
+  if [[ ! -r "${KEY_PATH}.pub" ]] && [[ -f "$KEY_PATH" ]]; then
+    log "Public key file missing. Regenerating from private key..."
+    ssh-keygen -y -f "$KEY_PATH" > "${KEY_PATH}.pub"
+    chmod 644 "${KEY_PATH}.pub"
+  fi
+  if [[ -r "${KEY_PATH}.pub" ]]; then
+    log "Public key:"
+    cat "${KEY_PATH}.pub"
+    log "Add this key to GitHub/GitLab (Settings → SSH keys)."
+  else
+    log "Warning: Could not read public key at ${KEY_PATH}.pub — add it manually."
+  fi
   mark_done "ssh"
 fi
 
