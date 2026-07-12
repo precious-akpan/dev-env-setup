@@ -87,8 +87,7 @@ All steps are idempotent and safe to re‑run.
 
 ### ✅ Verification
 After installation, verify key tools:
-```
-bash
+```bash
 java -version
 mvn -v
 gradle -v
@@ -135,12 +134,10 @@ Open Docker Desktop once (macOS/Windows).
 
 Clone your team’s sample project and run:
 
-```
-npm install for frontend dependencies
-
-mvn test for Java unit tests
-
-docker compose up for local services
+```bash
+npm install          # frontend dependencies
+mvn test             # Java unit tests
+docker compose up    # local services
 ```
 
 For deeper onboarding (services architecture, secrets access, environment variables), refer to internal documentation (Confluence/Notion).
