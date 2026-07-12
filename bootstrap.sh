@@ -30,6 +30,76 @@ mark_done() { echo "$1" >> "$STATE_FILE"; }
 #   0 if the step is done, 1 otherwise.
 is_done() { grep -qx "$1" "$STATE_FILE" 2>/dev/null; }
 
+# ── Platform Validation ─────────────────────────────────────────
+if [[ "$OS" == "Linux" ]]; then
+  if [[ ! -f /etc/debian_version ]]; then
+    log "Error: Unsupported Linux distribution detected."
+    log "This script currently supports Debian/Ubuntu-based distributions only."
+    log "Detected OS: $(grep -s '^PRETTY_NAME=' /etc/os-release | cut -d= -f2 | tr -d '"')"
+    log "Contributions for other distributions are welcome!"
+    exit 1
+  fi
+elif [[ "$OS" != "Darwin" ]]; then
+  log "Error: Unsupported operating system: $OS"
+  log "This script supports macOS and Debian/Ubuntu Linux."
+  exit 1
+fi
+
+# ── Argument Parsing ────────────────────────────────────────────
+YES_MODE=false
+DEV_NAME=""
+DEV_EMAIL=""
+GH_USER=""
+SHELL_CHOICE=""
+EDITOR_CHOICE=""
+DB_CHOICE=""
+
+# require_arg: Validates that a value-taking flag has a non-empty argument.
+# Arguments:
+#   $1: The flag name (e.g. --name).
+#   $2: The argument value (if present).
+# Exits with error if the value is missing, empty, or looks like another flag.
+require_arg() {
+  if [[ $# -lt 2 ]] || [[ -z "${2:-}" ]] || [[ "${2:0:1}" == "-" ]]; then
+    log "Error: $1 requires a value."
+    log "Run 'bootstrap.sh --help' for usage information."
+    exit 1
+  fi
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --yes|-y)    YES_MODE=true; shift ;;
+    --name)      require_arg "$@"; DEV_NAME="$2"; shift 2 ;;
+    --email)     require_arg "$@"; DEV_EMAIL="$2"; shift 2 ;;
+    --gh)        require_arg "$@"; GH_USER="$2"; shift 2 ;;
+    --db)        require_arg "$@"; DB_CHOICE="$2"; shift 2 ;;
+    --shell)     require_arg "$@"; SHELL_CHOICE="$2"; shift 2 ;;
+    --editor)    require_arg "$@"; EDITOR_CHOICE="$2"; shift 2 ;;
+    --help|-h)
+      cat <<'USAGE'
+Usage: bootstrap.sh [OPTIONS]
+
+Options:
+  --yes, -y         Non-interactive mode (skip confirmation prompt)
+  --name NAME       Full name for Git configuration
+  --email EMAIL     Email address for Git configuration
+  --gh USERNAME     GitHub username
+  --db DB           Database choice (postgresql|mysql|mongodb|skip)
+  --shell SHELL     Preferred shell (bash|zsh)
+  --editor EDITOR   Preferred editor (vim|nano|code)
+  --help, -h        Show this help message
+USAGE
+      exit 0
+      ;;
+    *)
+      log "Error: Unknown option: $1"
+      log "Run 'bootstrap.sh --help' for usage information."
+      exit 1
+      ;;
+  esac
+done
+
 # detect_pkg_manager: Determines the system's package manager based on the OS and available commands.
 # Sets the global PKG_MANAGER variable.
 detect_pkg_manager() {
@@ -65,7 +135,7 @@ ensure_brew() {
 # Checks for internet connectivity and minimum disk space. Exits on failure.
 pre_flight_checks() {
   log "Running pre-flight checks..."
-  
+
   # Auto-install curl for minimal installs
   if ! command -v curl >/dev/null 2>&1; then
     log "curl not found. Attempting auto-install..."
@@ -98,7 +168,7 @@ pre_flight_checks() {
     log "❌ Error: Insufficient disk space. Need at least ${MIN_DISK_GB}GB."
     exit 1
   fi
-  
+
   log "✅ Pre-flight checks passed."
 }
 
@@ -126,21 +196,21 @@ This script will install:
 ===============================================================
 BANNER
 
-  read -r -p "Proceed with installation? (y/N): " CONFIRM
-  [[ "${CONFIRM,,}" == "y" ]] || exit 0
+  if [[ "$YES_MODE" != true ]]; then
+    read -r -p "Proceed with installation? (y/N): " CONFIRM
+    [[ "${CONFIRM,,}" == "y" ]] || exit 0
+  fi
 
   detect_pkg_manager
   pre_flight_checks
 
-
-
   # Collect user info
   if ! is_done "userinfo"; then
-    read -r -p "Enter your full name: " DEV_NAME
-    read -r -p "Enter your email address: " DEV_EMAIL
-    read -r -p "Enter your GitHub username: " GH_USER
-    read -r -p "Choose your shell [bash/zsh]: " SHELL_CHOICE
-    read -r -p "Choose your editor [vim/nano/code]: " EDITOR_CHOICE
+    [[ -z "$DEV_NAME" ]] && read -r -p "Enter your full name: " DEV_NAME
+    [[ -z "$DEV_EMAIL" ]] && read -r -p "Enter your email address: " DEV_EMAIL
+    [[ -z "$GH_USER" ]] && read -r -p "Enter your GitHub username: " GH_USER
+    [[ -z "$SHELL_CHOICE" ]] && read -r -p "Choose your shell [bash/zsh]: " SHELL_CHOICE
+    [[ -z "$EDITOR_CHOICE" ]] && read -r -p "Choose your editor [vim/nano/code]: " EDITOR_CHOICE
 
     git config --global user.name "$DEV_NAME"
     git config --global user.email "$DEV_EMAIL"
@@ -228,12 +298,14 @@ BANNER
         sudo pacman -S --noconfirm jdk${JAVA_VERSION}-openjdk maven gradle
         ;;
     esac
-    
+
     if [[ ! -d "$HOME/.sdkman" ]]; then
       curl -s https://get.sdkman.io | bash
     fi
     # shellcheck source=/dev/null
+    set +u
     source "$HOME/.sdkman/bin/sdkman-init.sh" || true
+    set -u
     sdk install springboot || true
     mark_done "java"
   fi
@@ -248,8 +320,35 @@ BANNER
         log "Open Docker Desktop once to finalize installation."
         ;;
       apt)
-        sudo apt install -y docker.io docker-compose
+        # Remove legacy Docker packages if present
+        for pkg in docker.io docker-doc docker-compose podman-docker containerd runc; do
+          sudo apt remove -y "$pkg" 2>/dev/null || true
+        done
+        # Install prerequisites for Docker's official repository
+        sudo apt update
+        sudo apt install -y ca-certificates curl gnupg
+        # Detect distro for Docker repo URL (ubuntu or debian)
+        # shellcheck source=/dev/null
+        DOCKER_DISTRO="$(. /etc/os-release && echo "$ID")"
+        case "$DOCKER_DISTRO" in
+          ubuntu|debian) ;;
+          *) log "Warning: Unsupported distro '$DOCKER_DISTRO' for Docker official repo. Attempting with 'ubuntu'."; DOCKER_DISTRO="ubuntu" ;;
+        esac
+        # Add Docker's official GPG key
+        sudo install -m 0755 -d /etc/apt/keyrings
+        curl -fsSL "https://download.docker.com/linux/${DOCKER_DISTRO}/gpg" | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+        sudo chmod a+r /etc/apt/keyrings/docker.gpg
+        # Add Docker's official APT repository
+        # shellcheck source=/dev/null
+        echo \
+          "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${DOCKER_DISTRO} \
+          $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+          sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+        sudo apt update
+        # Install Docker CE, CLI, containerd, and Compose V2 plugin
+        sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
         sudo usermod -aG docker "$USER"
+        log "Docker installed. Log out and back in for group membership to take effect."
         ;;
       dnf)
         sudo dnf install -y docker docker-compose
@@ -267,14 +366,14 @@ BANNER
 
   # Database choice
   if ! is_done "db"; then
-    read -r -p "Choose DB [postgresql/mysql/mongodb/skip]: " DB_CHOICE
+    [[ -z "$DB_CHOICE" ]] && read -r -p "Choose DB [postgresql/mysql/mongodb/skip]: " DB_CHOICE
     case "$DB_CHOICE" in
       postgresql)
         case "$PKG_MANAGER" in
           apt) sudo apt install -y postgresql postgresql-contrib;;
           dnf) sudo dnf install -y postgresql-server postgresql-contrib;;
           pacman) sudo pacman -S --noconfirm postgresql;;
-          brew) ensure_brew; brew install postgresql;;
+          brew) ensure_brew; brew install postgresql@17 && brew services start postgresql@17;;
         esac
         ;;
       mysql)
@@ -282,15 +381,44 @@ BANNER
           apt) sudo apt install -y mysql-server;;
           dnf) sudo dnf install -y community-mysql-server;;
           pacman) sudo pacman -S --noconfirm mariadb;;
-          brew) ensure_brew; brew install mysql;;
+          brew) ensure_brew; brew install mysql && brew services start mysql;;
         esac
         ;;
       mongodb)
         case "$PKG_MANAGER" in
-          apt) sudo apt install -y mongodb;;
+          apt)
+            log "Configuring MongoDB's official apt repository..."
+            # shellcheck source=/dev/null
+            distro="$(. /etc/os-release && echo "$ID")"
+            # shellcheck source=/dev/null
+            codename="$(. /etc/os-release && echo "$VERSION_CODENAME")"
+            case "$distro" in
+              ubuntu|pop|mint)
+                distro="ubuntu"
+                if [[ "$codename" == "noble" ]]; then
+                  codename="jammy"
+                fi
+                ;;
+              debian|raspbian)
+                distro="debian"
+                ;;
+              *)
+                log "Warning: Distro '$distro' not officially supported for MongoDB repo. Defaulting to Ubuntu/Jammy."
+                distro="ubuntu"
+                codename="jammy"
+                ;;
+            esac
+            sudo install -m 0755 -d /etc/apt/keyrings
+            curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | sudo gpg --dearmor --yes -o /etc/apt/keyrings/mongodb-server-7.0.gpg
+            sudo chmod a+r /etc/apt/keyrings/mongodb-server-7.0.gpg
+            echo "deb [ arch=amd64,arm64 signed-by=/etc/apt/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/${distro} ${codename}/mongodb-org/7.0 multiverse" | \
+              sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list > /dev/null
+            sudo apt update
+            sudo apt install -y mongodb-org
+            ;;
           dnf) sudo dnf install -y mongodb-org;;
           pacman) sudo pacman -S --noconfirm mongodb-bin;;
-          brew) ensure_brew; brew install mongodb-community;;
+          brew) ensure_brew; brew tap mongodb/brew && brew install mongodb-community && brew services start mongodb-community;;
         esac
         ;;
       skip) ;;
@@ -352,10 +480,28 @@ BANNER
 
   # SSH keygen
   if ! is_done "ssh"; then
-    log "Generating SSH key..."
-    ssh-keygen -t ed25519 -C "$DEV_EMAIL ($GH_USER)" -f "$HOME/.ssh/id_ed25519" -N ""
-    log "Public key:"
-    cat "$HOME/.ssh/id_ed25519.pub"
+    KEY_PATH="$HOME/.ssh/id_ed25519"
+    if [[ -f "$KEY_PATH" ]]; then
+      log "SSH key already exists at $KEY_PATH — skipping generation."
+    else
+      log "Generating SSH key..."
+      mkdir -p "$HOME/.ssh"
+      chmod 700 "$HOME/.ssh"
+      ssh-keygen -t ed25519 -C "$DEV_EMAIL ($GH_USER)" -f "$KEY_PATH" -N ""
+    fi
+    # Display public key — regenerate from private key if .pub is missing
+    if [[ ! -r "${KEY_PATH}.pub" ]] && [[ -f "$KEY_PATH" ]]; then
+      log "Public key file missing. Regenerating from private key..."
+      ssh-keygen -y -f "$KEY_PATH" > "${KEY_PATH}.pub"
+      chmod 644 "${KEY_PATH}.pub"
+    fi
+    if [[ -r "${KEY_PATH}.pub" ]]; then
+      log "Public key:"
+      cat "${KEY_PATH}.pub"
+      log "Add this key to GitHub/GitLab (Settings → SSH keys)."
+    else
+      log "Warning: Could not read public key at ${KEY_PATH}.pub — add it manually."
+    fi
     mark_done "ssh"
   fi
 

@@ -52,9 +52,21 @@ function Mark-Done {
   param([string]$Step) Add-Content -Path $StateFile -Value $Step
 }
 
+function Refresh-Path {
+  <#
+  .SYNOPSIS
+    Reloads the PATH environment variable from the Windows registry.
+  .DESCRIPTION
+    After winget installs, the PATH is stale in the current session. This function
+    reloads both Machine and User PATH from the registry so newly installed CLIs
+    (code, git, npm, etc.) are immediately available.
+  #>
+  $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+}
+
 function Test-PreFlight {
     Write-Log "Running pre-flight checks..."
-    
+
     # Internet check
     try {
         $null = iwr -Uri "https://google.com" -Method Head -TimeoutSec 5 -ErrorAction Stop
@@ -134,6 +146,7 @@ if (-not (Is-Done "core")) {
   winget install --id Git.Git -e --source winget --accept-source-agreements --accept-package-agreements
   winget install --id Python.Python.3 -e --source winget --accept-source-agreements --accept-package-agreements
   winget install --id GNU.Wget -e --source winget --accept-source-agreements --accept-package-agreements
+  Refresh-Path
   Mark-Done "core"
 }
 
@@ -145,6 +158,7 @@ if (-not (Is-Done "node")) {
   if ($LASTEXITCODE -ne 0) {
     winget install --id OpenJS.NodeJS.LTS -e --source winget --accept-source-agreements --accept-package-agreements
   }
+  Refresh-Path
   npm install -g yarn pnpm | Out-Null
   Mark-Done "node"
 }
@@ -155,6 +169,8 @@ if (-not (Is-Done "java")) {
   winget install --id EclipseAdoptium.Temurin.$JavaVersion.JDK -e --source winget --accept-source-agreements --accept-package-agreements
   winget install --id Apache.Maven -e --source winget --accept-source-agreements --accept-package-agreements
   winget install --id Gradle.Gradle -e --source winget --accept-source-agreements --accept-package-agreements
+  # Spring Boot CLI via SDKMAN is tricky on Windows; recommend using Maven/Gradle tasks
+  Refresh-Path
   Mark-Done "java"
 }
 
@@ -163,6 +179,7 @@ if (-not (Is-Done "docker")) {
   Write-Log "Installing Docker Desktop..."
   winget install --id Docker.DockerDesktop -e --source winget --accept-source-agreements --accept-package-agreements
   Write-Log "Open Docker Desktop once to finalize installation."
+  Refresh-Path
   Mark-Done "docker"
 }
 
@@ -175,6 +192,7 @@ if (-not (Is-Done "db")) {
     "mongodb" { winget install --id MongoDB.Server -e --source winget --accept-source-agreements --accept-package-agreements }
     default {}
   }
+  Refresh-Path
   Mark-Done "db"
 }
 
@@ -182,6 +200,7 @@ if (-not (Is-Done "db")) {
 if (-not (Is-Done "vscode")) {
   Write-Log "Installing VS Code..."
   winget install --id Microsoft.VisualStudioCode -e --source winget --accept-source-agreements --accept-package-agreements
+  Refresh-Path
   code --install-extension ms-vscode.vscode-typescript-next
   code --install-extension dbaeumer.vscode-eslint
   code --install-extension esbenp.prettier-vscode
