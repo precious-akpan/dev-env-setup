@@ -11,6 +11,48 @@ log() { echo "$(date '+%F %T') $*" | tee -a "$LOG_FILE"; }
 mark_done() { echo "$1" >> "$STATE_FILE"; }
 is_done() { grep -qx "$1" "$STATE_FILE" 2>/dev/null; }
 
+# ── Argument Parsing ────────────────────────────────────────────
+YES_MODE=false
+DEV_NAME=""
+DEV_EMAIL=""
+GH_USER=""
+SHELL_CHOICE=""
+EDITOR_CHOICE=""
+DB_CHOICE=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --yes|-y)    YES_MODE=true; shift ;;
+    --name)      DEV_NAME="$2"; shift 2 ;;
+    --email)     DEV_EMAIL="$2"; shift 2 ;;
+    --gh)        GH_USER="$2"; shift 2 ;;
+    --db)        DB_CHOICE="$2"; shift 2 ;;
+    --shell)     SHELL_CHOICE="$2"; shift 2 ;;
+    --editor)    EDITOR_CHOICE="$2"; shift 2 ;;
+    --help|-h)
+      cat <<'USAGE'
+Usage: bootstrap.sh [OPTIONS]
+
+Options:
+  --yes, -y         Non-interactive mode (skip confirmation prompt)
+  --name NAME       Full name for Git configuration
+  --email EMAIL     Email address for Git configuration
+  --gh USERNAME     GitHub username
+  --db DB           Database choice (postgresql|mysql|mongodb|skip)
+  --shell SHELL     Preferred shell (bash|zsh)
+  --editor EDITOR   Preferred editor (vim|nano|code)
+  --help, -h        Show this help message
+USAGE
+      exit 0
+      ;;
+    *)
+      log "Error: Unknown option: $1"
+      log "Run 'bootstrap.sh --help' for usage information."
+      exit 1
+      ;;
+  esac
+done
+
 # Banner
 cat <<'BANNER'
 ===============================================================
@@ -28,8 +70,10 @@ This script will install:
 ===============================================================
 BANNER
 
-read -r -p "Proceed with installation? (y/N): " CONFIRM
-[[ "${CONFIRM,,}" == "y" ]] || exit 0
+if [[ "$YES_MODE" != true ]]; then
+  read -r -p "Proceed with installation? (y/N): " CONFIRM
+  [[ "${CONFIRM,,}" == "y" ]] || exit 0
+fi
 
 # Ensure Homebrew (macOS only)
 ensure_brew() {
@@ -49,11 +93,11 @@ ensure_brew() {
 
 # Collect user info
 if ! is_done "userinfo"; then
-  read -r -p "Enter your full name: " DEV_NAME
-  read -r -p "Enter your email address: " DEV_EMAIL
-  read -r -p "Enter your GitHub username: " GH_USER
-  read -r -p "Choose your shell [bash/zsh]: " SHELL_CHOICE
-  read -r -p "Choose your editor [vim/nano/code]: " EDITOR_CHOICE
+  [[ -z "$DEV_NAME" ]] && read -r -p "Enter your full name: " DEV_NAME
+  [[ -z "$DEV_EMAIL" ]] && read -r -p "Enter your email address: " DEV_EMAIL
+  [[ -z "$GH_USER" ]] && read -r -p "Enter your GitHub username: " GH_USER
+  [[ -z "$SHELL_CHOICE" ]] && read -r -p "Choose your shell [bash/zsh]: " SHELL_CHOICE
+  [[ -z "$EDITOR_CHOICE" ]] && read -r -p "Choose your editor [vim/nano/code]: " EDITOR_CHOICE
 
   git config --global user.name "$DEV_NAME"
   git config --global user.email "$DEV_EMAIL"
