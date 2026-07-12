@@ -190,13 +190,23 @@ fi
 
 # Database choice
 if ! is_done "db"; then
-  read -r -p "Choose DB [postgresql/mysql/mongodb/skip]: " DB_CHOICE
-  case "$DB_CHOICE" in
-    postgresql) sudo apt install -y postgresql postgresql-contrib;;
-    mysql) sudo apt install -y mysql-server;;
-    mongodb) sudo apt install -y mongodb;;
-    skip) ;;
-  esac
+  [[ -z "$DB_CHOICE" ]] && read -r -p "Choose DB [postgresql/mysql/mongodb/skip]: " DB_CHOICE
+  if [[ "$OS" == "Darwin" ]]; then
+    ensure_brew
+    case "$DB_CHOICE" in
+      postgresql) brew install postgresql@17 && brew services start postgresql@17;;
+      mysql) brew install mysql && brew services start mysql;;
+      mongodb) brew tap mongodb/brew && brew install mongodb-community && brew services start mongodb-community;;
+      skip) ;;
+    esac
+  else
+    case "$DB_CHOICE" in
+      postgresql) sudo apt install -y postgresql postgresql-contrib;;
+      mysql) sudo apt install -y mysql-server;;
+      mongodb) sudo apt install -y mongodb;;
+      skip) ;;
+    esac
+  fi
   mark_done "db"
 fi
 
