@@ -182,8 +182,28 @@ if ! is_done "docker"; then
     brew install --cask docker
     log "Open Docker Desktop once to finalize installation."
   else
-    sudo apt install -y docker.io docker-compose
+    # Remove legacy Docker packages if present
+    for pkg in docker.io docker-doc docker-compose podman-docker containerd runc; do
+      sudo apt remove -y "$pkg" 2>/dev/null || true
+    done
+    # Install prerequisites for Docker's official repository
+    sudo apt update
+    sudo apt install -y ca-certificates curl gnupg
+    # Add Docker's official GPG key
+    sudo install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    sudo chmod a+r /etc/apt/keyrings/docker.gpg
+    # Add Docker's official APT repository
+    # shellcheck source=/dev/null
+    echo \
+      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+      $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+      sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+    sudo apt update
+    # Install Docker CE, CLI, containerd, and Compose V2 plugin
+    sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
     sudo usermod -aG docker "$USER"
+    log "Docker installed. Log out and back in for group membership to take effect."
   fi
   mark_done "docker"
 fi
