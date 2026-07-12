@@ -386,7 +386,36 @@ BANNER
         ;;
       mongodb)
         case "$PKG_MANAGER" in
-          apt) sudo apt install -y mongodb;;
+          apt)
+            log "Configuring MongoDB's official apt repository..."
+            # shellcheck source=/dev/null
+            distro="$(. /etc/os-release && echo "$ID")"
+            # shellcheck source=/dev/null
+            codename="$(. /etc/os-release && echo "$VERSION_CODENAME")"
+            case "$distro" in
+              ubuntu|pop|mint)
+                distro="ubuntu"
+                if [[ "$codename" == "noble" ]]; then
+                  codename="jammy"
+                fi
+                ;;
+              debian|raspbian)
+                distro="debian"
+                ;;
+              *)
+                log "Warning: Distro '$distro' not officially supported for MongoDB repo. Defaulting to Ubuntu/Jammy."
+                distro="ubuntu"
+                codename="jammy"
+                ;;
+            esac
+            sudo install -m 0755 -d /etc/apt/keyrings
+            curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | sudo gpg --dearmor --yes -o /etc/apt/keyrings/mongodb-server-7.0.gpg
+            sudo chmod a+r /etc/apt/keyrings/mongodb-server-7.0.gpg
+            echo "deb [ arch=amd64,arm64 signed-by=/etc/apt/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/${distro} ${codename}/mongodb-org/7.0 multiverse" | \
+              sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list > /dev/null
+            sudo apt update
+            sudo apt install -y mongodb-org
+            ;;
           dnf) sudo dnf install -y mongodb-org;;
           pacman) sudo pacman -S --noconfirm mongodb-bin;;
           brew) ensure_brew; brew tap mongodb/brew && brew install mongodb-community && brew services start mongodb-community;;
